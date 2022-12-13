@@ -9,6 +9,7 @@ from tkinter import filedialog
 from threading import Thread
 from queue import Queue
 from pic2mp4 import main
+import sv_ttk
 
 
 class RedirectStderr:
@@ -216,5 +217,8 @@ LABELS = {
 
 if __name__ == '__main__':
     root = tk.Tk()
+    root.option_add("*font", "Ubuntu")
+    root.resizable(False, False)
+    sv_ttk.set_theme("light")
     app = Application(master=root)
     app.mainloop()
