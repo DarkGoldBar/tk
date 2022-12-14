@@ -8,40 +8,67 @@ from tkinter.ttk import *
 from tkinter import filedialog
 from threading import Thread
 from queue import Queue
-from pic2mp4 import main
-import sv_ttk
+from PIL import Image, ImageDraw, ImageFont
+from pathlib import Path
+import ffmpeg
 
 
-class RedirectStderr:
-    def __init__(self, text_ctrl):
-        self.output = text_ctrl
-        self._stderr = None
+def main(in_dir, out_file, height=1440, fps=10, cmd='ffmpeg',
+         text_font='DejaVuSans.ttf',
+         text_color=(255, 0, 0),
+         text_pos=(0.005, 0.005),
+         text_size=0.03):
 
-    def write(self, string):
-        self.output.insert(END, string)
+    img_dir = Path(in_dir)
+    img_paths = sorted(img_dir.glob('*'))
+    img0 = Image.open(img_paths[0])
+    W, H = img0.size
+    width = int(height * W / H)
+    fontStyle = ImageFont.truetype(text_font, encoding="utf-8")
+    int(height)
+    int(fps)
 
-    def __enter__(self):
-        self._stderr, sys.stderr = sys.stderr, self
-        return self
+    if out_file.endswith('avi'):
+        proc = (
+            ffmpeg
+            .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(width, height), r=str(fps))
+            .output(out_file, r=str(fps), vcodec='mpeg4', vtag='xvid', qscale='1')
+            .overwrite_output()
+            .run_async(pipe_stdin=True)
+        )
+    else:
+        proc = (
+            ffmpeg
+            .input('pipe:', format='rawvideo', pix_fmt='rgb24', s='{}x{}'.format(width, height), r=str(fps))
+            .output(out_file, r=str(fps), crf='18')
+            .overwrite_output()
+            .run_async(pipe_stdin=True)
+        )
 
-    def __exit__(self, type, value, trace):
-        self._stderr, sys.stderr = None, self._stderr
+    yield len(img_paths)
 
+    for i, img_path in enumerate(img_paths):
+        img = Image.open(img_path)
+        W, H = img.size
 
-class RedirectStdout:
-    def __init__(self, text_ctrl):
-        self.output = text_ctrl
-        self._stdout = None
+        if text_font:
+            t_pos_x, t_pos_y = text_pos
+            t_pos_x = int(t_pos_x * W) if t_pos_x < 1 else t_pos_x
+            t_pos_y = int(t_pos_y * H) if t_pos_y < 1 else t_pos_y
+            t_size = int(text_size * H) if text_size < 1 else text_size
+            text = img_path.name
+            draw = ImageDraw.Draw(img)
+            font = fontStyle.font_variant(size=t_size)
+            draw.text((t_pos_x, t_pos_y), text, text_color, font=font)
 
-    def write(self, string):
-        self.output.insert(END, string)
+        img2 = img.resize((width, height), Image.Resampling.LANCZOS)
 
-    def __enter__(self):
-        self._stdout, sys.stdout = sys.stdout, self
-        return self
+        yield i
+        stream = img2.tobytes()
+        proc.stdin.write(stream)
 
-    def __exit__(self, type, value, trace):
-        self._stdout, sys.stdout = None, self._stdout
+    proc.stdin.close()
+    proc.wait()
 
 
 class Application(Frame):
@@ -57,29 +84,29 @@ class Application(Frame):
         self.top_label1 = Label(self.top, text=LABELS['l1'])
         self.top_text1 = Entry(self.top, width=40)
         self.top_btn1 = Button(self.top, text=LABELS['b1'], command=self.onClickInputBtn)
-        self.top_label1.grid(row=0, column=0)
-        self.top_text1.grid(row=0, column=1)
-        self.top_btn1.grid(row=0, column=2)
+        self.top_label1.grid(row=0, column=0, padx=4, pady=4)
+        self.top_text1.grid(row=0, column=1, padx=4, pady=4)
+        self.top_btn1.grid(row=0, column=2, padx=4, pady=4)
         self.top_label2 = Label(self.top, text=LABELS['l2'])
         self.top_text2 = Entry(self.top, width=40)
         self.top_btn2 = Button(self.top, text=LABELS['b2'], command=self.onClickOutputBtn)
-        self.top_label2.grid(row=1, column=0)
-        self.top_text2.grid(row=1, column=1)
-        self.top_btn2.grid(row=1, column=2)
+        self.top_label2.grid(row=1, column=0, padx=4, pady=4)
+        self.top_text2.grid(row=1, column=1, padx=4, pady=4)
+        self.top_btn2.grid(row=1, column=2, padx=4, pady=4)
 
         self.mid = LabelFrame(self, text=LABELS['lf2'])
         self.mid.pack(padx=4, pady=4)
-        
+
         self.mid_op1_label = Label(self.mid, text=LABELS['op1'])  # height
         self.mid_op1_ctrl = Entry(self.mid)
         self.mid_op1_ctrl.insert(0, '1440')
-        self.mid_op1_label.grid(row=0, column=0)
-        self.mid_op1_ctrl.grid(row=0, column=1)
+        self.mid_op1_label.grid(row=0, column=0, padx=4, pady=4)
+        self.mid_op1_ctrl.grid(row=0, column=1, padx=4, pady=4)
         self.mid_op2_label = Label(self.mid, text=LABELS['op2'])  # fps
         self.mid_op2_ctrl = Entry(self.mid)
         self.mid_op2_ctrl.insert(0, '10')
-        self.mid_op2_label.grid(row=1, column=0)
-        self.mid_op2_ctrl.grid(row=1, column=1)
+        self.mid_op2_label.grid(row=1, column=0, padx=4, pady=4)
+        self.mid_op2_ctrl.grid(row=1, column=1, padx=4, pady=4)
         # self.mid_op3_label = Label(self.mid, text=LABELS['op3'])  # crf
         # self.mid_op3_ctrl = Entry(self.mid)
         # self.mid_op3_ctrl.insert(0, '18')
@@ -88,21 +115,21 @@ class Application(Frame):
         self.mid_op4_label = Label(self.mid, text=LABELS['op4'])  # ffmpeg
         self.mid_op4_ctrl = Entry(self.mid)
         self.mid_op4_ctrl.insert(0, 'ffmpeg')
-        self.mid_op4_label.grid(row=3, column=0)
-        self.mid_op4_ctrl.grid(row=3, column=1)
+        self.mid_op4_label.grid(row=3, column=0, padx=4, pady=4)
+        self.mid_op4_ctrl.grid(row=3, column=1, padx=4, pady=4)
         self.mid_op5_var = BooleanVar(value=True)
         self.mid_op5 = Checkbutton(self.mid, text=LABELS['op5'], variable=self.mid_op5_var)  # text
         self.mid_op5.grid(row=4, column=0, columnspan=2)
         self.mid_op6_label = Label(self.mid, text=LABELS['op6'])  # text_font
         self.mid_op6_ctrl = Entry(self.mid)
         self.mid_op6_ctrl.insert(0, 'DejaVuSans.ttf')
-        self.mid_op6_label.grid(row=5, column=0)
-        self.mid_op6_ctrl.grid(row=5, column=1)
+        self.mid_op6_label.grid(row=5, column=0, padx=4, pady=4)
+        self.mid_op6_ctrl.grid(row=5, column=1, padx=4, pady=4)
         self.mid_op7_label = Label(self.mid, text=LABELS['op7'])  # text_size
         self.mid_op7_ctrl = Entry(self.mid)
         self.mid_op7_ctrl.insert(0, '0.03')
-        self.mid_op7_label.grid(row=6, column=0)
-        self.mid_op7_ctrl.grid(row=6, column=1)
+        self.mid_op7_label.grid(row=6, column=0, padx=4, pady=4)
+        self.mid_op7_ctrl.grid(row=6, column=1, padx=4, pady=4)
 
         self.run = Button(self, text=LABELS['b3'], command=self.onClickRunBtn)
         self.run.pack(padx=4, pady=4)
@@ -172,28 +199,38 @@ class Application(Frame):
         t = Thread(target=_main, args=[q, args])
         t.setDaemon(True)
         t.start()
-        v = q.get()
-        # self.log('maximum', v, '\n')
-        self.progress['maximum'] = v
         self.master.after(10, lambda: self._thread_update_ffmpeg(q, t))
 
     def _thread_update_ffmpeg(self, q: Queue, t: Thread):
-        v = q.get()
-        # self.log('frame', v, '\n')
-        self.progress['value'] = v
-        if v < self.progress['maximum']:
-            self.master.after(10, lambda: self._thread_update_ffmpeg(q, t))
+        k, v = q.get()
+        stop = True
+        if k == 'maximum':
+            self.progress['maximum'] = v
+            stop = False
+        elif k == 'value':
+            self.progress['value'] = v
+            if v < self.progress['maximum']:
+                stop = False
         else:
+            self.log(k + str(v) + '\n')
+
+        if stop:
             t.join()
             self.log('DONE\n')
+        else:
+            self.master.after(10, lambda: self._thread_update_ffmpeg(q, t))
+
 
 def _main(q, args):
     itermain = main(**args)
-    max_value = next(itermain)
-    q.put(max_value)
-    for i in itermain:
-        q.put(i)
-    q.put(max_value)
+    try:
+        max_value = next(itermain)
+        q.put(('maximum', max_value))
+        for i in itermain:
+            q.put(('value', i))
+        q.put(('value', max_value))
+    except Exception:
+        q.put(('error', sys.exc_info()))
 
 
 LABELS = {
@@ -217,8 +254,10 @@ LABELS = {
 
 if __name__ == '__main__':
     root = tk.Tk()
-    root.option_add("*font", "Ubuntu")
     root.resizable(False, False)
-    sv_ttk.set_theme("light")
+    if sys.platform.startswith('linux'):
+        import sv_ttk
+        sv_ttk.set_theme("light")
+        root.option_add("*font", "Ubuntu")
     app = Application(master=root)
     app.mainloop()

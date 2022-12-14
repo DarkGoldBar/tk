@@ -1,2 +1,3 @@
 ffmpeg-python
 pillow
+sv_ttk
